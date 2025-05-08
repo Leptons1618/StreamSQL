@@ -8,8 +8,8 @@ import time
 # MQTT Configuration
 MQTT_BROKER = '61f9996c4b544effaf69aa77225d64d9.s1.eu.hivemq.cloud'
 MQTT_PORT = 8883
-MQTT_USERNAME = 'anish'
-MQTT_PASSWORD = 'Developer1'
+MQTT_USERNAME = '<your_mqtt_username>'  # Replace with your MQTT username
+MQTT_PASSWORD = '<your_mqtt_password>'  # Replace with your MQTT password
 MQTT_TOPIC = 'streamsql/data'
 
 # MQTT Callbacks
@@ -38,7 +38,7 @@ print("🔄 Connecting to Kafka broker...")
 client = KafkaClient(hosts="localhost:9092")
 
 # Choose your topic
-topic_name = "TuringMachine.dbo.Customers"
+topic_name = "<hostname.dbo.your_topic>"  # Replace with your Kafka topic name
 print(f"📋 Available topics: {[t.decode('utf-8') for t in client.topics.keys()]}")
 topic = client.topics[topic_name.encode('utf-8')]
 
