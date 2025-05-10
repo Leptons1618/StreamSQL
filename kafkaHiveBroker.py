@@ -7,13 +7,13 @@ import ssl
 import time
 
 # Config from environment
-KAFKA_HOSTS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-MQTT_BROKER = os.getenv("MQTT_BROKER", "e2cf4dc097804f4889e07d9a50208781.s1.eu.hivemq.cloud")
+KAFKA_HOSTS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+MQTT_BROKER = os.getenv("MQTT_BROKER")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME", "anish")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "Developer1")
-MQTT_TOPIC = os.getenv("MQTT_TOPIC", "streamsql/data")
-TOPIC_NAME = os.getenv("TOPIC_NAME", "TuringMachine.dbo.Customers")
+MQTT_USERNAME = os.getenv("MQTT_USERNAME")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+MQTT_TOPIC = os.getenv("MQTT_TOPIC")
+TOPIC_NAME = os.getenv("TOPIC_NAME")
 
 print(f"🔄 Kafka Bootstrap Servers: {KAFKA_HOSTS}"
       f"\n🔄 MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}"
@@ -23,13 +23,6 @@ print(f"🔄 Kafka Bootstrap Servers: {KAFKA_HOSTS}"
       f"\n🔄 MQTT Password: {MQTT_PASSWORD}"
       f"\n🔄 MQTT TLS Version: {ssl.PROTOCOL_TLS}"
       )
-
-# MQTT Configuration
-# MQTT_BROKER = 'e2cf4dc097804f4889e07d9a50208781.s1.eu.hivemq.cloud'
-# MQTT_PORT = 8883
-# MQTT_USERNAME = 'anish'
-# MQTT_PASSWORD = 'Developer1'
-# MQTT_TOPIC = 'streamsql/data'
 
 # MQTT Callbacks
 def on_connect(client, userdata, flags, reason_code, properties):
