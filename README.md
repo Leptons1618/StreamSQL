@@ -2,10 +2,6 @@
 
 This project implements a Change Data Capture (CDC) pipeline using Kafka, Debezium, and MQTT integration. The system monitors database changes and streams them to various consumers in real-time.
 
-## Architecture Overview
-
-![StreamSQL Architecture](./StreamSQL+Architecture.png)
-
 ### Component Flow
 
 ```mermaid
