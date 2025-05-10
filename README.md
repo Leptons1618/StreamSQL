@@ -1,3 +1,5 @@
+[![Read on Medium](https://img.shields.io/badge/Medium-Deep%20Dive-blue?logo=medium)](https://medium.com/@anishgiri163/streamsql-a-step-by-step-guide-to-real-time-database-change-streaming-3f4d2bed9af6?source=friends_link&sk=cf8493763f708f50744b7e4ca8f945cf)
+
 # StreamSQL - Real-time Database Change Pipeline
 
 StreamSQL is a robust Change Data Capture (CDC) pipeline that leverages Kafka, Debezium, and MQTT to monitor and stream database changes to various consumers in real-time. This project enables seamless integration between SQL Server databases and client applications, ensuring low-latency data propagation.
