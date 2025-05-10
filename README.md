@@ -24,20 +24,8 @@ graph TD;
 ## Prerequisites
 
 - Docker and Docker Compose
-- Python 3.8 or higher
-- Required Python packages:
-  - `paho-mqtt` (MQTT client for Python)
-  - `pykafka` (Kafka client for Python)
 - SQL Server with CDC enabled
 - Network access to SQL Server and HiveMQ Cloud
-
-### Python Package Installation
-
-Install the required Python packages:
-
-```bash
-pip install paho-mqtt pykafka
-```
 
 ## Getting Started
 
@@ -94,41 +82,11 @@ Use Docker Compose to start the services:
 docker-compose up -d
 ```
 
-### 4. Configure SQL Server Connector
-
-Edit the `mssql-source-connector.json` file with your SQL Server details:
-
-```json
-{
-    "database.hostname": "your-db-server",
-    "database.port": "1433",
-    "database.user": "your-username",
-    "database.password": "your-password",
-    "database.dbname": "your-database",
-    "database.server.name": "your-server-name",
-    "table.include.list": "schema.table_name"
-}
-```
-
-Register the connector with Kafka Connect:
-
-```bash
-curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" --data @mssql-source-connector.json http://localhost:8083/connectors
-```
-
-### 5. Start the StreamSQL Bridge
-
-Run the Kafka-MQTT bridge:
-
-```bash
-python kafkaHiveBroker.py
-```
-
 ## Monitoring and Management
 
 - Access the Kafka UI at [http://localhost:8080](http://localhost:8080).
 - Monitor Kafka Connect at [http://localhost:8083](http://localhost:8083).
-- Check HiveMQ Cloud dashboard for MQTT message statistics.
+- Check [HiveMQ Cloud dashboard](https://console.hivemq.cloud/) for MQTT message statistics.
 
 ## Troubleshooting
 
