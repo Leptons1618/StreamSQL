@@ -1,35 +1,43 @@
-# StreamSQL
+# StreamSQL - Real-time Database Change Pipeline
 
-A real-time data streaming solution that captures database changes and forwards them to MQTT messaging systems.
+This project implements a Change Data Capture (CDC) pipeline using Kafka, Debezium, and MQTT integration. The system monitors database changes and streams them to various consumers in real-time.
 
-## Overview
-
-StreamSQL is a data integration pipeline that uses Change Data Capture (CDC) to monitor SQL Server database changes and streams them through Apache Kafka to MQTT brokers in real-time. This solution enables event-driven architectures and real-time analytics with minimal impact on source systems.
-
-## Architecture
+## Architecture Overview
 
 ![StreamSQL Architecture](./StreamSQL+Architecture.png)
 
-The solution consists of the following components:
+### Component Flow
 
-- **SQL Server with CDC**: Source database with Change Data Capture enabled
-- **Debezium**: Captures database changes and streams them to Kafka
-- **Apache Kafka**: Message broker for reliable data streaming
-- **Kafka Connect**: Framework for connecting Kafka to external systems
-- **StreamSQL Bridge**: Python service that forwards messages from Kafka to MQTT
-- **HiveMQ Cloud**: MQTT broker for distributing messages to client applications
+```mermaid
+graph TD;
+    A[SQL Server with CDC] -->|Change Data Capture| B(Debezium);
+    B -->|Kafka Producer| C(Kafka Topic);
+    C -->|StreamSQL Bridge| D(MQTT Topic);
+    D --> E[Client Applications];
+```
+
+## Components
+
+- **SQL Server with CDC**: Source database with Change Data Capture enabled.
+- **Debezium**: Captures database changes and streams them to Kafka.
+- **Apache Kafka**: Message broker for reliable data streaming.
+- **Kafka Connect**: Framework for connecting Kafka to external systems.
+- **StreamSQL Bridge**: Python service that forwards messages from Kafka to MQTT.
+- **HiveMQ Cloud**: MQTT broker for distributing messages to client applications.
 
 ## Prerequisites
 
 - Docker and Docker Compose
 - Python 3.8 or higher
 - Required Python packages:
-  - paho-mqtt (MQTT client for Python)
-  - pykafka (Kafka client for Python)
+  - `paho-mqtt` (MQTT client for Python)
+  - `pykafka` (Kafka client for Python)
 - SQL Server with CDC enabled
 - Network access to SQL Server and HiveMQ Cloud
 
 ### Python Package Installation
+
+Install the required Python packages:
 
 ```bash
 pip install paho-mqtt pykafka
@@ -44,87 +52,95 @@ git clone https://github.com/Leptons1618/StreamSQL.git
 cd streamsql
 ```
 
-### 2. Configure SQL Server Connector
+### 2. Configure Environment Variables
 
-Edit the `mssql-source-connector.json` file with your SQL Server details:
+Create a `.env` file in the project root and configure the following variables (refer to `.env_example` for details):
 
-```json
-{
-    "name": "mssql-source-connector",
-    "config": {
-        "connector.class": "io.debezium.connector.sqlserver.SqlServerConnector",
-        "database.hostname": "your-sql-server",
-        "database.port": "1433",
-        "database.user": "your-username",
-        "database.password": "your-password",
-        "database.dbname": "your-database",
-        // Additional configuration...
-    }
-}
+```plaintext
+# Database Configuration
+DB_HOSTNAME=your-db-server-address
+DB_PORT=1433
+DB_USER=your-db-username
+DB_PASSWORD=your-db-password
+DB_NAME=your-database-name
+DB_SERVER_NAME=logical-server-name
+
+# Tables to Monitor
+TABLE_INCLUDE_LIST=schema.table_name
+
+# Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+HISTORY_TOPIC=dbhistory.sql-server-cdc
+TOPIC_NAME=your-topic-name
+RECOVERY_POLL_INTERVAL_MS=5000
+RECOVERY_ATTEMPTS=4
+TASKS_MAX=1
+SNAPSHOT_MODE=initial
+
+# Topic Creation Settings
+TOPIC_CREATION_REPLICATION_FACTOR=1
+TOPIC_CREATION_PARTITIONS=1
+TOPIC_CREATION_ENABLE=true
+
+# MQTT Configuration
+MQTT_BROKER=your-mqtt-broker.hivemq.cloud
+MQTT_PORT=8883
+MQTT_USERNAME=your-mqtt-username
+MQTT_PASSWORD=your-mqtt-password
+MQTT_TOPIC=your/mqtt/topic
 ```
 
-### 3. Configure MQTT Connection
+### 3. Start the Infrastructure
 
-Update the `kafka_to_hivemq_cloud.py` file with your HiveMQ Cloud credentials:
-
-```python
-MQTT_BROKER = 'your-mqtt-broker.hivemq.cloud'
-MQTT_PORT = 8883
-MQTT_USERNAME = 'your-username'
-MQTT_PASSWORD = 'your-password'
-MQTT_TOPIC = 'your-topic'
-```
-
-### 4. Start the Infrastructure
+Use Docker Compose to start the services:
 
 ```bash
 docker-compose up -d
 ```
 
-### 5. Start the StreamSQL Bridge
+### 4. Configure SQL Server Connector
 
-```bash
-python kafka_to_hivemq_cloud.py
+Edit the `mssql-source-connector.json` file with your SQL Server details:
+
+```json
+{
+    "database.hostname": "your-db-server",
+    "database.port": "1433",
+    "database.user": "your-username",
+    "database.password": "your-password",
+    "database.dbname": "your-database",
+    "database.server.name": "your-server-name",
+    "table.include.list": "schema.table_name"
+}
 ```
 
-## Configuration Options
+Register the connector with Kafka Connect:
 
-### Kafka Connect Options
+```bash
+curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" --data @mssql-source-connector.json http://localhost:8083/connectors
+```
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `snapshot.mode` | CDC snapshot mode | `initial` |
-| `topic.creation.enable` | Automatic topic creation | `true` |
-| `tasks.max` | Maximum number of tasks | `1` |
+### 5. Start the StreamSQL Bridge
 
-### StreamSQL Bridge Options
+Run the Kafka-MQTT bridge:
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker address | `localhost:9092` |
-| `KAFKA_TOPIC` | Source Kafka topic | `sqlserver1.dbo.Customers` |
-| `auto_offset_reset` | Consumer offset strategy | `latest` |
+```bash
+python kafkaHiveBroker.py
+```
 
 ## Monitoring and Management
 
-- Access the Kafka UI at [http://localhost:8080](http://localhost:8080)
-- Monitor Kafka Connect at [http://localhost:8083](http://localhost:8083)
-- Check HiveMQ Cloud dashboard for MQTT message statistics
-
-## Alternative Implementations
-
-The repository includes two versions of the Kafka to MQTT bridge:
-
-1. **kafka_to_hivemq_cloud.py**: Standard implementation using kafka-python
-2. **kafkaHiveBrocker.py**: Alternative implementation using PyKafka
+- Access the Kafka UI at [http://localhost:8080](http://localhost:8080).
+- Monitor Kafka Connect at [http://localhost:8083](http://localhost:8083).
+- Check HiveMQ Cloud dashboard for MQTT message statistics.
 
 ## Troubleshooting
 
 ### Common Issues
 
-- **No messages flowing**: Verify SQL Server CDC is properly configured
-- **Connector failures**: Check Kafka Connect logs for detailed error messages
-- **MQTT connection issues**: Verify credentials and network connectivity
+- **No messages flowing**: Verify SQL Server CDC is properly configured.
+- **Connector failures**: Check Kafka Connect logs for detailed error messages.
+- **MQTT connection issues**: Verify credentials and network connectivity.
 
 ### Viewing Logs
 
