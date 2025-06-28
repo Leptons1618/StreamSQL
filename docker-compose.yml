@@ -4,6 +4,7 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      
   kafka:
     image: confluentinc/cp-kafka:7.2.2
     depends_on:
@@ -53,10 +54,29 @@ services:
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
       DYNAMIC_CONFIG_ENABLED: "true"
 
-  kafka-bridge:
-    image: python:3.8-slim
+  # Dynamic Connector Manager - automatically creates connectors based on .env configuration
+  connector-manager:
+    image: python:3.9-slim
+    depends_on:
+      - kafka-connect
+    working_dir: /app
+    volumes:
+      - ./:/app
+    env_file:
+      - .env
+    command: >
+      sh -c "
+        pip install requests &&
+        python connector_manager.py
+      "
+    restart: "no"
+
+  # Enhanced Database Writer - automatically discovers topics and writes to target database
+  enhanced-db-writer:
+    image: python:3.9-slim
     depends_on:
       - kafka
+      - connector-manager
     working_dir: /app
     volumes:
       - ./:/app
@@ -64,61 +84,18 @@ services:
       - .env
     environment:
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
-      MQTT_BROKER: ${MQTT_BROKER}
-      MQTT_PORT: ${MQTT_PORT}
-      MQTT_USERNAME: ${MQTT_USERNAME}
-      MQTT_PASSWORD: ${MQTT_PASSWORD}
-      MQTT_TOPIC: ${MQTT_TOPIC}
-      TOPIC_NAME: ${TOPIC_NAME}
-    command: >
-      sh -c "python -m pip install --upgrade pip && pip install paho-mqtt pykafka && python kafkaHiveBroker.py"
-
-  connector-init:
-    image: alpine:latest
-    depends_on:
-      - kafka-ui
-    env_file:
-      - .env
+      CDC_CHANGES_TABLE: ${CDC_CHANGES_TABLE:-dbo.CDCChanges}
     command: >
       sh -c "
-        apk add --no-cache curl jq
-        
-        # Wait for base endpoint to be available first
-        echo 'Waiting for Kafka Connect base endpoint...'
-        until curl -s http://kafka-connect:8083/ >/dev/null 2>&1; do 
-          echo 'Waiting for basic Kafka Connect API...'
-          sleep 5
-        done
-        
-        echo 'Creating connector configuration JSON...'
-        echo '{
-          \"name\": \"mssql-source-connector\",
-          \"config\": {
-            \"connector.class\": \"io.debezium.connector.sqlserver.SqlServerConnector\",
-            \"database.hostname\": \"'${DB_HOSTNAME}'\",
-            \"database.port\": \"'${DB_PORT}'\",
-            \"database.user\": \"'${DB_USER}'\",
-            \"database.password\": \"'${DB_PASSWORD}'\",
-            \"database.dbname\": \"'${DB_NAME}'\",
-            \"database.server.name\": \"'${DB_SERVER_NAME}'\",
-            \"table.include.list\": \"'${TABLE_INCLUDE_LIST}'\",
-            \"database.history.kafka.bootstrap.servers\": \"'${KAFKA_BOOTSTRAP_SERVERS}'\",
-            \"database.history.kafka.topic\": \"'${HISTORY_TOPIC}'\",
-            \"database.history.kafka.recovery.poll.interval.ms\": \"'${RECOVERY_POLL_INTERVAL_MS}'\",
-            \"database.history.kafka.recovery.attempts\": \"'${RECOVERY_ATTEMPTS}'\",
-            \"tasks.max\": \"'${TASKS_MAX}'\",
-            \"snapshot.mode\": \"'${SNAPSHOT_MODE}'\",
-            \"topic.creation.default.replication.factor\": '${TOPIC_CREATION_REPLICATION_FACTOR}',
-            \"topic.creation.default.partitions\": '${TOPIC_CREATION_PARTITIONS}',
-            \"topic.creation.enable\": '${TOPIC_CREATION_ENABLE}'
-          }
-        }' > /tmp/connector.json
-        echo 'Connector JSON configuration created'
-        echo 'Created connector.json:'
-        cat /tmp/connector.json
-        echo 'Sleeping for 10 seconds to allow Kafka Connect to stabilize...'
-        sleep 10
-        echo 'Registering connector with Kafka Connect...'
-        curl -i -X POST -H \"Accept:application/json\" -H \"Content-Type:application/json\" --data @/tmp/connector.json http://kafka-connect:8083/connectors;
-        echo 'Connector registration completed'
+        apt-get update && 
+        apt-get install -y curl gnupg2 &&
+        curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - &&
+        curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list &&
+        apt-get update && 
+        ACCEPT_EULA=Y apt-get install -y msodbcsql17 unixodbc-dev &&
+        python -m pip install --upgrade pip && 
+        pip install pyodbc pykafka sqlalchemy pandas && 
+        sleep 30 &&
+        python enhanced_kafka_writer.py
       "
+    restart: unless-stopped

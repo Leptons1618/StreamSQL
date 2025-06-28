@@ -1,106 +1,97 @@
 import os
+import json
+import time
 from pykafka import KafkaClient
 from pykafka.common import OffsetType
 import paho.mqtt.client as mqtt
-import json
-import ssl
-import time
+import threading
 
-# Config from environment
+
 KAFKA_HOSTS = os.getenv("KAFKA_BOOTSTRAP_SERVERS")
+DB1_TOPIC_NAME = os.getenv("DB1_TOPIC_NAME")
+DB2_TOPIC_NAME = os.getenv("DB2_TOPIC_NAME")
 MQTT_BROKER = os.getenv("MQTT_BROKER")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "8883"))
-MQTT_USERNAME = os.getenv("MQTT_USERNAME")
-MQTT_PASSWORD = os.getenv("MQTT_PASSWORD")
+MQTT_PORT = int(os.getenv("MQTT_PORT", 1883))
 MQTT_TOPIC = os.getenv("MQTT_TOPIC")
-TOPIC_NAME = os.getenv("TOPIC_NAME")
 
-print(f"🔄 Kafka Bootstrap Servers: {KAFKA_HOSTS}"
-      f"\n🔄 MQTT Broker: {MQTT_BROKER}:{MQTT_PORT}"
-      f"\n🔄 MQTT Topic: {MQTT_TOPIC}"
-      f"\n🔄 Kafka Topic: {TOPIC_NAME}"
-      f"\n🔄 MQTT Username: {MQTT_USERNAME}"
-      f"\n🔄 MQTT Password: {MQTT_PASSWORD}"
-      f"\n🔄 MQTT TLS Version: {ssl.PROTOCOL_TLS}"
-      )
-
-# MQTT Callbacks
-def on_connect(client, userdata, flags, reason_code, properties):
-    print(f"🔗 Connected to MQTT Broker with reason code: {reason_code}")
-
-def on_publish(client, userdata, mid, reason_code, properties):
-    print(f"📤 Message published with ID: {mid}")
-
-# Set up MQTT client
-mqtt_client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, protocol=mqtt.MQTTv5)
-mqtt_client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
-mqtt_client.tls_set(tls_version=ssl.PROTOCOL_TLS)
-mqtt_client.on_connect = on_connect
-mqtt_client.on_publish = on_publish
-
-print("🔄 Connecting to MQTT broker...")
+# MQTT setup
+mqtt_client = mqtt.Client()
 mqtt_client.connect(MQTT_BROKER, MQTT_PORT)
 mqtt_client.loop_start()
 
-# Wait for MQTT connection
-time.sleep(1)
+# Kafka client setup
+kafka_client = KafkaClient(hosts=KAFKA_HOSTS)
 
-# Connect to Kafka broker
-print(f"🔄 Connecting to Kafka broker at {KAFKA_HOSTS}...")
-client = KafkaClient(hosts=KAFKA_HOSTS)
+print(f"✅ Connected to Kafka: {KAFKA_HOSTS}")
+print(f"📡 DB1 Topic: {DB1_TOPIC_NAME}")
+print(f"📡 DB2 Topic: {DB2_TOPIC_NAME}")
+print(f"📤 Forwarding to MQTT topic: {MQTT_TOPIC}")
 
-# Choose your topic
-# topic_name = "TuringMachine.dbo.Customers"  # Replace with your Kafka topic name
-topic_name = TOPIC_NAME
-print(f"📋 Available topics: {[t.decode('utf-8') for t in client.topics.keys()]}")
-topic = client.topics[topic_name.encode('utf-8')]
+def consume_topic(topic_name, db_identifier):
+    """Consumer function for a specific topic"""
+    try:
+        topic = kafka_client.topics[topic_name.encode('utf-8')]
+        consumer = topic.get_simple_consumer(
+            consumer_group=f"ignition-json-consumer-{db_identifier.lower()}".encode('utf-8'),
+            auto_offset_reset=OffsetType.LATEST,
+            reset_offset_on_start=True,
+            auto_commit_enable=True
+        )
+        
+        print(f"✅ [{db_identifier}] Started consuming from topic: {topic_name}")
+        
+        for message in consumer:
+            if message:
+                try:
+                    raw = json.loads(message.value.decode('utf-8'))
+                    
+                    # Add database identifier to the payload
+                    enhanced_payload = {
+                        "source_db": db_identifier,
+                        "topic": topic_name,
+                        "timestamp": int(time.time() * 1000),
+                        "data": raw
+                    }
+                    
+                    payload = json.dumps(enhanced_payload)
+                    mqtt_client.publish(MQTT_TOPIC, payload)
+                    print(f"📤 [{db_identifier}] Sent message to MQTT")
+                except Exception as e:
+                    print(f"⚠️ [{db_identifier}] Error processing message: {e}")
+                    
+    except Exception as e:
+        print(f"❌ [{db_identifier}] Error in consumer: {e}")
+    finally:
+        if 'consumer' in locals():
+            consumer.stop()
 
-# Create a consumer
-consumer = topic.get_simple_consumer(
-    consumer_group=b"mqtt-bridge-consumer",
-    auto_offset_reset=OffsetType.EARLIEST,  # Or OffsetType.LATEST
-    reset_offset_on_start=True,
-    auto_commit_enable=True
-)
+# Create threads for both database topics
+threads = []
 
-print(f"✅ Consuming from Kafka topic '{topic_name}' and forwarding to MQTT topic '{MQTT_TOPIC}'")
-print("⏱️ Waiting for messages...")
+if DB1_TOPIC_NAME:
+    db1_thread = threading.Thread(target=consume_topic, args=(DB1_TOPIC_NAME, "DB1"))
+    db1_thread.daemon = True
+    threads.append(db1_thread)
 
-# Consume messages
+if DB2_TOPIC_NAME:
+    db2_thread = threading.Thread(target=consume_topic, args=(DB2_TOPIC_NAME, "DB2"))
+    db2_thread.daemon = True
+    threads.append(db2_thread)
+
 try:
-    for message in consumer:
-        if message is not None:
-            # Get message value and try to parse as JSON
-            try:
-                # Try to decode and parse as JSON
-                message_value = message.value.decode('utf-8')
-                json_data = json.loads(message_value)
-                
-                # Pretty print for debugging
-                pretty_json = json.dumps(json_data, indent=2)
-                print(f"\n📥 Received message from Kafka:")
-                print(f"📌 Offset: {message.offset}")
-                print(f"📄 Payload:\n{pretty_json}")
-                
-                # Publish to MQTT
-                mqtt_result = mqtt_client.publish(MQTT_TOPIC, message_value)
-                print(f"📤 Published to MQTT topic '{MQTT_TOPIC}' with result: {mqtt_result.rc}")
-                
-            except json.JSONDecodeError:
-                # Not JSON, print as-is
-                print(f"📥 Received non-JSON message - Offset: {message.offset}, Value: {message.value}")
-                mqtt_client.publish(MQTT_TOPIC, message.value)
-                
-            except Exception as e:
-                print(f"⚠️ Error processing message: {e}")
+    # Start all consumer threads
+    for thread in threads:
+        thread.start()
+    
+    print(f"🚀 Started {len(threads)} consumer threads")
+    
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+        
 except KeyboardInterrupt:
-    print("\n🛑 Stopping consumer...")
-    consumer.stop()
+    print("🛑 Interrupted by user")
+finally:
     mqtt_client.loop_stop()
     mqtt_client.disconnect()
-    print("👋 Shutdown complete!")
-except Exception as e:
-    print(f"❌ Error: {e}")
-    consumer.stop()
-    mqtt_client.loop_stop()
-    mqtt_client.disconnect()
+    print("✅ Cleanup completed")
